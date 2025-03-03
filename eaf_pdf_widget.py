@@ -1891,28 +1891,33 @@ class PdfViewerWidget(QWidget):
         else:
             message_to_emacs("No surrounding sentence found.")
 
-    def get_word_under_cursor(self):
+    def get_word_under_cursor_or_selected(self):
         """
-        Get the word under the cursor.
+        Get the word under the cursor or selected.
         """
-        ex, ey, page_index = self.get_cursor_absolute_position()
-        if page_index is None or page_index >= self.document.page_count:
-            return None
-        page = self.document[page_index]
-        word_offset = 10  # 10 pixel tolerance for detecting the word
-        draw_rect = fitz.Rect(ex, ey, ex + word_offset, ey + word_offset)
-        page_words = page.get_text_words()
-        rect_words = [w for w in page_words if fitz.Rect(w[:4]).intersects(draw_rect)]
-        if not rect_words:
-            return None
-        return rect_words[0][4]
+        if self.is_select_mode:
+            content = self.parse_select_char_list()
+            self.cleanup_select()
+            return content
+        else:
+            ex, ey, page_index = self.get_cursor_absolute_position()
+            if page_index is None or page_index >= self.document.page_count:
+                return None
+            page = self.document[page_index]
+            word_offset = 10  # 10 pixel tolerance for detecting the word
+            draw_rect = fitz.Rect(ex, ey, ex + word_offset, ey + word_offset)
+            page_words = page.get_text_words()
+            rect_words = [w for w in page_words if fitz.Rect(w[:4]).intersects(draw_rect)]
+            if not rect_words:
+                return None
+            return rect_words[0][4]
 
     @interactive
     def paw_view_note_in_eaf(self):
         """
         Interactive function to get the word under the cursor.
         """
-        word = self.get_word_under_cursor()
+        word = self.get_word_under_cursor_or_selected()
         sentence = self.get_surrounding_sentence("")
         # Replace multiple spaces and newlines with a single space in the sentence
         cleaned_sentence = re.sub(r"[ \n]+", " ", sentence)
