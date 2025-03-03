@@ -20,6 +20,8 @@
 
 
 import math
+import re
+import string
 import time
 import webbrowser
 
@@ -1841,3 +1843,95 @@ class PdfViewerWidget(QWidget):
         self.document.set_toc(payload)
         self.document.saveIncr()
         message_to_emacs("Updated PDF Table of Contents successfully.")
+
+    def get_surrounding_sentence(self, word):
+        """
+        Get the surrounding sentence of the given word.
+        """
+        ex, ey, page_index = self.get_cursor_absolute_position()
+        if page_index is None or page_index >= self.document.page_count:
+            return None
+        page = self.document[page_index]
+
+        # Get all text on the page
+        page_text = page.get_text("text")
+        word_offset = 10 # 10 pixel offset for tolerance
+        draw_rect = fitz.Rect(ex, ey, ex + word_offset, ey + word_offset)
+        page_words = page.get_text_words()
+        rect_words = [w for w in page_words if fitz.Rect(w[:4]).intersects(draw_rect)]
+
+        if not rect_words:
+            return None
+
+        selected_word = rect_words[0][4]
+
+        if selected_word not in page_text:
+            return None
+
+        # Find the position of the selected word in the text
+        start_pos = page_text.index(selected_word)
+
+        # Find the surrounding sentence
+        sentence_start = page_text.rfind('.', 0, start_pos) + 1
+        sentence_end = page_text.find('.', start_pos) + 1
+        surrounding_sentence = page_text[sentence_start:sentence_end].strip()
+
+        return surrounding_sentence
+
+    @interactive
+    def copy_sentence(self):
+        """
+        Interactive function to get the surrounding sentence of a selected word.
+        """
+        sentence = self.get_surrounding_sentence("")
+        cleaned_sentence = re.sub(r"[ \n]+", " ", sentence)
+        if cleaned_sentence:
+            message_to_emacs(f"Copy Sentence: {cleaned_sentence}")
+            eval_in_emacs('kill-new', [cleaned_sentence])
+        else:
+            message_to_emacs("No surrounding sentence found.")
+
+    def get_word_under_cursor(self):
+        """
+        Get the word under the cursor.
+        """
+        ex, ey, page_index = self.get_cursor_absolute_position()
+        if page_index is None or page_index >= self.document.page_count:
+            return None
+        page = self.document[page_index]
+        word_offset = 10  # 10 pixel tolerance for detecting the word
+        draw_rect = fitz.Rect(ex, ey, ex + word_offset, ey + word_offset)
+        page_words = page.get_text_words()
+        rect_words = [w for w in page_words if fitz.Rect(w[:4]).intersects(draw_rect)]
+        if not rect_words:
+            return None
+        return rect_words[0][4]
+
+    @interactive
+    def paw_view_note_in_eaf(self):
+        """
+        Interactive function to get the word under the cursor.
+        """
+        word = self.get_word_under_cursor()
+        sentence = self.get_surrounding_sentence("")
+        # Replace multiple spaces and newlines with a single space in the sentence
+        cleaned_sentence = re.sub(r"[ \n]+", " ", sentence)
+
+        # Clean the word to remove any punctuation characters after it,
+        # keeping only the tilde (~) before and after the word
+        if word:
+            cleaned_word = word.rstrip(string.punctuation)
+        else:
+            cleaned_word = ""
+
+        entry = {
+            "note": cleaned_sentence,
+            "url": self.url,
+            "title": self.current_page_index,
+            "body": cleaned_word,
+        }
+        if word:
+            # message_to_emacs(f"Word under cursor: {word}")
+            eval_in_emacs('paw-view-note-in-eaf', [entry['note'], entry['url'], entry['title'], entry['body']])
+        else:
+            message_to_emacs("No word found under cursor.")
